@@ -1,0 +1,15 @@
+[tool.pytest.ini_options]
+testpaths     = ["tests"]
+python_files  = ["test_*.py"]
+python_classes= ["Test*"]
+python_functions = ["test_*"]
+addopts       = "-v --tb=short --color=yes"
+
+[tool.coverage.run]
+source = ["src"]
+omit   = ["tests/*", "scripts/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+fail_under   = 80

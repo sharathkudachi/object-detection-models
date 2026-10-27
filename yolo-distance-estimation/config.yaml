@@ -1,0 +1,81 @@
+# ============================================================
+# Real-Time Object Detection & Distance Estimation
+# Default Configuration
+# ============================================================
+
+# ── Model ────────────────────────────────────────────────────
+model:
+  weights: "yolov8n.pt"          # yolov8n / yolov8s / yolov8m / yolov8l
+  image_size: 640
+  confidence_threshold: 0.45
+  iou_threshold: 0.45
+  device: "cpu"                  # cpu | cuda | mps
+  half_precision: false          # FP16 (GPU only)
+  warmup_iterations: 3
+
+# ── Camera ───────────────────────────────────────────────────
+camera:
+  source: 0                      # Webcam index, or path to video / RTSP URL
+  width:  1280
+  height: 720
+  fps:    30
+  calibration_file: "config/calibration.json"
+
+# ── Distance Estimation ──────────────────────────────────────
+distance:
+  method: "geometric"            # geometric | stereo | hybrid
+  stereo_baseline_m: 0.12
+  stereo_weight: 0.70            # Stereo contribution in hybrid mode
+  near_zone_m: 2.0               # Red zone threshold
+  mid_zone_m:  6.0               # Yellow zone threshold
+  # Real-world heights (metres) used for monocular estimation
+  known_heights:
+    person:       1.70
+    car:          1.50
+    truck:        3.50
+    bus:          3.20
+    bicycle:      1.00
+    motorbike:    1.10
+    chair:        0.85
+    bottle:       0.25
+    laptop:       0.03
+    cell phone:   0.14
+    dog:          0.50
+    cat:          0.30
+    traffic light: 0.80
+    stop sign:    0.75
+
+# ── Tracker ──────────────────────────────────────────────────
+tracker:
+  enabled: true
+  max_disappeared: 25
+  max_distance_px: 80.0
+
+# ── Calibration ──────────────────────────────────────────────
+calibration:
+  pattern_size: [9, 6]           # Inner corners (cols × rows)
+  square_size_m: 0.025           # Physical square side length in metres
+  min_frames: 15
+  output: "config/calibration.json"
+
+# ── Evaluation ───────────────────────────────────────────────
+evaluation:
+  iou_threshold: 0.50
+  confidence_threshold: 0.25
+  output_dir: "results/"
+
+# ── Logging ──────────────────────────────────────────────────
+logging:
+  level: "INFO"                  # DEBUG | INFO | WARNING | ERROR
+  save_to_file: false
+  log_file: "logs/inference.log"
+
+# ── Output ───────────────────────────────────────────────────
+output:
+  save_video: false
+  output_path: "results/output.mp4"
+  screenshot_dir: "results/screenshots/"
+  show_fps_hud: true
+  show_track_ids: true
+  show_distance_zones: true
+  show_crosshair: true
