@@ -1,0 +1,47 @@
+[
+  {
+    "profile": "high_accuracy",
+    "stride": 1,
+    "imgsz": 640,
+    "total_time_s": 37.026,
+    "fps": 2.7,
+    "analyzed_frames": 100,
+    "yolo_time_s": 31.777,
+    "yolo_ms_per_frame": 317.8,
+    "optflow_time_s": 0.302,
+    "optflow_ms_per_frame": 3.0,
+    "encoding_time_s": 0.26,
+    "decoding_time_s": 0.705,
+    "drawing_time_s": 0.25
+  },
+  {
+    "profile": "balanced",
+    "stride": 2,
+    "imgsz": 480,
+    "total_time_s": 11.289,
+    "fps": 8.86,
+    "analyzed_frames": 50,
+    "yolo_time_s": 9.597,
+    "yolo_ms_per_frame": 191.9,
+    "optflow_time_s": 0.139,
+    "optflow_ms_per_frame": 2.8,
+    "encoding_time_s": 0.288,
+    "decoding_time_s": 0.75,
+    "drawing_time_s": 0.225
+  },
+  {
+    "profile": "fast",
+    "stride": 3,
+    "imgsz": 480,
+    "total_time_s": 7.972,
+    "fps": 12.54,
+    "analyzed_frames": 34,
+    "yolo_time_s": 6.32,
+    "yolo_ms_per_frame": 185.9,
+    "optflow_time_s": 0.079,
+    "optflow_ms_per_frame": 2.3,
+    "encoding_time_s": 0.305,
+    "decoding_time_s": 0.791,
+    "drawing_time_s": 0.241
+  }
+]

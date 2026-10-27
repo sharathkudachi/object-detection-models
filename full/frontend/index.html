@@ -525,6 +525,23 @@
           <label class="mu" for="file" style="font-size:12px;">Or Upload Video</label>
           <input type="file" id="file" accept="video/*">
 
+          <label class="mu" for="profile" style="font-size:12px;">Processing Profile</label>
+          <select id="profile">
+            <option value="high_accuracy">🎯 High Accuracy (1x - Every Frame)</option>
+            <option value="balanced" selected>⚖️ Balanced (2x - 2x Speed)</option>
+            <option value="fast">⚡ Fast (3x - 3x Speed)</option>
+          </select>
+          <div class="mu" style="font-size:11px; margin-top:-6px; margin-bottom:8px; line-height:1.3; color:#94a3b8;">
+            * Balanced/Fast sample every 2nd or 3rd frame to accelerate processing while preserving exact video duration.
+          </div>
+
+          <label class="mu" for="imgsz" style="font-size:12px;">Inference Image Size</label>
+          <select id="imgsz">
+            <option value="480">480px (Fast - ~40% lower latency)</option>
+            <option value="640" selected>640px (Default - Balanced)</option>
+            <option value="800">800px (High Detail - Long Range)</option>
+          </select>
+
           <div class="mu" style="font-size:12px; margin-top: 4px;">Analysis Mode</div>
           <div class="radio-group">
             <label class="radio-label">
@@ -546,6 +563,7 @@
           
           <progress id="bar" max="1" value="0"></progress>
           <div class="mu" id="msg" role="status" style="font-size:12px; margin-top:6px; min-height:18px;"></div>
+          <div id="perfBadge" style="display:none; margin-top:6px; font-size:11.5px; background:#070b14; border:1px solid #1c2840; border-radius:5px; padding:6px 8px; line-height:1.4;"></div>
         </section>
       </div>
 
@@ -769,10 +787,11 @@
           upload_id: up.upload_id,
           model: $("model").value,
           mode: document.querySelector("[name=mode]:checked").value,
+          profile: $("profile").value,
+          imgsz: parseInt($("imgsz").value) || 640,
           conf: parseFloat($("confSlider").value),
           iou: parseFloat($("iouSlider").value),
-          motion_threshold: parseFloat($("motSlider").value),
-          stride: 1
+          motion_threshold: parseFloat($("motSlider").value)
         };
 
         const j = await api("/analysis/start", {
@@ -785,13 +804,16 @@
         $("run").disabled = true;
         $("run").style.display = "none";
         $("stop").style.display = "block";
-        msg("Analysis queued...");
+        $("perfBadge").style.display = "none";
+        msg("Analysis queued in worker pool...");
 
         const timer = setInterval(async () => {
           try {
             const s = await api("/analysis/" + j.id);
             $("bar").value = s.progress;
-            msg(`${s.status.toUpperCase()} • ${(s.progress * 100).toFixed(0)}% • ${s.fps.toFixed(1)} fps • Frame ${s.frame || 0}/${s.total_frames || 0}${s.error ? " • Error: " + s.error : ""}`);
+            const stageText = s.stage || s.status.toUpperCase();
+            const etaText = s.eta_s ? ` • ETA: ${s.eta_s}s` : "";
+            msg(`${stageText} • ${(s.progress * 100).toFixed(0)}% • ${s.fps.toFixed(1)} fps • Frame ${s.frame || 0}/${s.total_frames || 0}${etaText}${s.error ? " • Error: " + s.error : ""}`);
             
             if (["completed", "failed", "cancelled"].includes(s.status)) {
               clearInterval(timer);
@@ -849,6 +871,18 @@
       const downloadBtn = $("btnDownload");
       downloadBtn.href = `/api/v1/analysis/${id}/download`;
       downloadBtn.style.display = "inline-flex";
+
+      // Display Performance Summary Badge
+      if (R.perf) {
+        const p = R.perf;
+        const tb = p.timing_breakdown || {};
+        $("perfBadge").innerHTML = `
+          <div style="color:#38bdf8; font-weight:600; margin-bottom:2px;">⚡ Processing Telemetry (${p.profile.toUpperCase()} Profile)</div>
+          <div>Avg Speed: <b>${p.avg_fps} FPS</b> • Total Time: <b>${p.total_time_s}s</b> (${p.frames_read} frames)</div>
+          <div style="color:#94a3b8; font-size:11px;">Inference: ${tb.yolo_ms_per_analyzed_frame || 0} ms/frame • Optical Flow: ${tb.optflow_ms_per_analyzed_frame || 0} ms/frame</div>
+        `;
+        $("perfBadge").style.display = "block";
+      }
 
       // Automatically switch to Output Video player
       setViewMode("output");

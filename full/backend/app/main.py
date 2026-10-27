@@ -1,9 +1,11 @@
 import base64
 import logging
 import os
+import re
 import shutil
-import threading
+import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Optional
 
@@ -18,11 +20,16 @@ from ultralytics import YOLO
 
 from . import pipeline
 from .config import ROOT, settings
+from .detection.yolo import ModelRegistry
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 log = logging.getLogger("surveillance")
 
-app = FastAPI(title="AI Military Surveillance & Convoy Analysis", version="1.0.0")
+app = FastAPI(
+    title="AI Military Surveillance & Convoy Analysis",
+    version="2.0.0",
+    description="High-performance AI Military Surveillance & Convoy Analysis System"
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -32,17 +39,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Bounded worker pool to prevent resource starvation (Max 2 concurrent video processing workers)
+JOB_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="VideoWorker")
 JOBS: dict = {}
 ALLOWED_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv", ".webm"}
 
-# Cache loaded live webcam model
 LIVE_MODEL = None
 
 
 class StartReq(BaseModel):
     upload_id: str
-    model: str = settings.models[0]
-    mode: str = Field("military+optical_flow", description="Analysis mode")
+    model: str = settings.models[0] if settings.models else "best1.pt"
+    mode: str = Field("military+optical_flow", description="Analysis mode: military+optical_flow, detection+segmentation, detection")
+    profile: str = Field("high_accuracy", description="Processing profile: high_accuracy (1x), balanced (2x), fast (3x)")
+    imgsz: int = Field(640, ge=320, le=1280, description="Inference image size: 480 (fast), 640 (default), 800 (high detail)")
     conf: float = Field(settings.conf, ge=0.05, le=0.95)
     iou: float = Field(settings.iou, ge=0.1, le=0.95)
     stride: int = Field(1, ge=1, le=10)
@@ -62,10 +72,16 @@ class LiveFrameReq(BaseModel):
     conf: Optional[float] = 0.35
 
 
+def _sanitize_id(identifier: str) -> str:
+    """Validate and sanitize ID to prevent directory traversal attacks."""
+    if not identifier or not re.match(r"^[a-zA-Z0-9_-]+$", identifier):
+        raise HTTPException(400, "Invalid identifier format")
+    return identifier
+
+
 def _find_upload(uid: str) -> Path:
-    if not uid.isalnum():
-        raise HTTPException(400, "Invalid upload id")
-    for p in settings.upload_dir.glob(f"{uid}.*"):
+    clean_uid = _sanitize_id(uid)
+    for p in settings.upload_dir.glob(f"{clean_uid}.*"):
         return p
     raise HTTPException(404, "Upload not found")
 
@@ -79,7 +95,10 @@ def system():
         "device": device_name,
         "cuda": cuda,
         "models": settings.models,
-        "default_model": settings.models[0] if settings.models else "best1.pt"
+        "default_model": settings.models[0] if settings.models else "best1.pt",
+        "cpu_threads": torch.get_num_threads(),
+        "profiles": ["high_accuracy", "balanced", "fast"],
+        "modes": ["military+optical_flow", "detection+segmentation", "detection"]
     }
 
 
@@ -96,7 +115,7 @@ def list_samples():
     for d in search_dirs:
         if d.exists() and d.is_dir():
             for f in d.glob("*.mp4"):
-                if f.name not in seen and not f.name.startswith("output_") and not f.name.startswith("test_h264"):
+                if f.name not in seen and not f.name.startswith("output_") and not f.name.startswith("test_h264") and not f.name.startswith("annotated_"):
                     seen.add(f.name)
                     size_mb = round(f.stat().st_size / (1024 * 1024), 1)
                     samples.append({
@@ -109,7 +128,8 @@ def list_samples():
 
 @app.post("/api/v1/sample/select")
 def select_sample(req: SampleSelectReq):
-    """Load an existing sample video into the uploads directory."""
+    """Load an existing sample video into the uploads directory with validation."""
+    clean_name = Path(req.filename).name
     target_file = None
     search_dirs = [
         ROOT,
@@ -117,13 +137,13 @@ def select_sample(req: SampleSelectReq):
         ROOT.parent / "full" / "storage" / "uploads"
     ]
     for d in search_dirs:
-        cand = d / req.filename
-        if cand.exists():
+        cand = d / clean_name
+        if cand.exists() and cand.is_file():
             target_file = cand
             break
 
     if not target_file:
-        raise HTTPException(404, f"Sample video '{req.filename}' not found")
+        raise HTTPException(404, f"Sample video '{clean_name}' not found")
 
     ext = target_file.suffix.lower()
     uid = uuid.uuid4().hex
@@ -133,11 +153,11 @@ def select_sample(req: SampleSelectReq):
     cap = cv2.VideoCapture(str(dest))
     if not cap.isOpened():
         dest.unlink(missing_ok=True)
-        raise HTTPException(422, "Unable to open sample video")
+        raise HTTPException(422, "Unable to read sample video")
 
     meta = {
         "upload_id": uid,
-        "filename": req.filename,
+        "filename": clean_name,
         "width": int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
         "height": int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
         "fps": cap.get(cv2.CAP_PROP_FPS) or 25.0,
@@ -170,10 +190,11 @@ async def upload(file: UploadFile = File(...)):
         dest.unlink(missing_ok=True)
         raise HTTPException(413, f"File exceeds maximum upload size of {settings.max_upload_mb} MB")
 
+    # Validate that uploaded file is an actual readable video
     cap = cv2.VideoCapture(str(dest))
     if not cap.isOpened():
         dest.unlink(missing_ok=True)
-        raise HTTPException(422, "File is not a readable video file")
+        raise HTTPException(422, "Uploaded file is not a valid or readable video")
 
     meta = {
         "upload_id": uid,
@@ -190,11 +211,11 @@ async def upload(file: UploadFile = File(...)):
 
 @app.get("/api/v1/video/{uid}")
 def video(uid: str):
-    """Stream input video."""
+    """Stream input video with range request support."""
     return FileResponse(_find_upload(uid), media_type="video/mp4")
 
 
-def _work(aid, req, src):
+def _work(aid: str, req: StartReq, src: Path):
     job = JOBS[aid]
     json_path = settings.result_dir / f"{aid}.json"
     video_path = settings.output_dir / f"{aid}.mp4"
@@ -202,11 +223,12 @@ def _work(aid, req, src):
     try:
         pipeline.run(job, req, src, json_path, video_path)
         job["status"] = "cancelled" if job.get("cancel") else "completed"
+        job["stage"] = "Completed" if job["status"] == "completed" else "Cancelled"
         job["output_video"] = f"/api/v1/analysis/{aid}/video"
         job["has_output_video"] = video_path.exists()
     except Exception as e:
         log.exception("Analysis job %s failed: %s", aid, e)
-        job.update(status="failed", error=str(e))
+        job.update(status="failed", stage="Failed", error=str(e))
 
 
 @app.post("/api/v1/analysis/start")
@@ -216,23 +238,30 @@ def start(req: StartReq):
     JOBS[aid] = {
         "id": aid,
         "status": "queued",
+        "stage": "Queued in Worker Pool",
         "progress": 0.0,
         "fps": 0.0,
         "frame": 0,
         "total_frames": 0,
+        "elapsed_s": 0.0,
+        "eta_s": 0,
+        "profile": req.profile,
+        "model": req.model,
         "error": None,
         "cancel": False,
         "has_output_video": False,
-        "output_video": None
+        "output_video": None,
+        "perf_summary": None
     }
-    threading.Thread(target=_work, args=(aid, req, src), daemon=True).start()
+    JOB_EXECUTOR.submit(_work, aid, req, src)
     return JOBS[aid]
 
 
 def _job(aid: str):
-    if aid not in JOBS:
+    clean_aid = _sanitize_id(aid)
+    if clean_aid not in JOBS:
         raise HTTPException(404, "Analysis job not found")
-    return JOBS[aid]
+    return JOBS[clean_aid]
 
 
 @app.get("/api/v1/analysis/{aid}")
@@ -244,6 +273,7 @@ def status(aid: str):
 def stop(aid: str):
     job = _job(aid)
     job["cancel"] = True
+    job["stage"] = "Cancelling..."
     return {"ok": True, "message": "Cancellation signal sent"}
 
 
@@ -252,7 +282,8 @@ def result(aid: str):
     job = _job(aid)
     if job["status"] not in ("completed", "cancelled"):
         raise HTTPException(409, f"Analysis results not ready (status: {job['status']})")
-    result_path = settings.result_dir / f"{aid}.json"
+    clean_aid = _sanitize_id(aid)
+    result_path = settings.result_dir / f"{clean_aid}.json"
     if not result_path.exists():
         raise HTTPException(404, "Result file not found")
     return FileResponse(result_path, media_type="application/json")
@@ -261,26 +292,28 @@ def result(aid: str):
 @app.get("/api/v1/analysis/{aid}/video")
 def get_output_video(aid: str):
     """Stream generated annotated output video with HTTP Range header support."""
-    out_file = settings.output_dir / f"{aid}.mp4"
+    clean_aid = _sanitize_id(aid)
+    out_file = settings.output_dir / f"{clean_aid}.mp4"
     if not out_file.exists():
         raise HTTPException(404, "Annotated video not found or processing incomplete")
     return FileResponse(
         out_file,
         media_type="video/mp4",
-        filename=f"annotated_{aid}.mp4"
+        filename=f"annotated_{clean_aid}.mp4"
     )
 
 
 @app.get("/api/v1/analysis/{aid}/download")
 def download_output_video(aid: str):
     """Download the generated annotated output MP4 video."""
-    out_file = settings.output_dir / f"{aid}.mp4"
+    clean_aid = _sanitize_id(aid)
+    out_file = settings.output_dir / f"{clean_aid}.mp4"
     if not out_file.exists():
         raise HTTPException(404, "Output video file not found")
     return FileResponse(
         out_file,
         media_type="application/octet-stream",
-        filename=f"annotated_surveillance_{aid}.mp4"
+        filename=f"annotated_surveillance_{clean_aid}.mp4"
     )
 
 
@@ -315,7 +348,7 @@ def models_info():
             }
         else:
             try:
-                temp_yolo = YOLO(str(model_path))
+                temp_yolo = ModelRegistry.get_or_load(str(model_path), "cpu")
                 classes_map = temp_yolo.names or {}
                 task = getattr(temp_yolo, "task", None) or ""
                 is_seg = "segment" in str(task).lower() or "seg" in str(model_path).lower()
@@ -339,25 +372,22 @@ def process_live_frame(req: LiveFrameReq):
     """Process a single frame from webcam feed for real-time live surveillance."""
     global LIVE_MODEL
     try:
-        # Decode base64 frame
         img_data = base64.b64decode(req.image_base64.split(",")[-1])
         nparr = np.frombuffer(img_data, np.uint8)
         frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         if frame is None:
             raise HTTPException(400, "Invalid frame data")
 
-        if LIVE_MODEL is None or getattr(LIVE_MODEL, "_model_name", None) != req.model:
-            m_path = req.model or "best1.pt"
-            LIVE_MODEL = YOLO(m_path)
-            LIVE_MODEL._model_name = m_path
+        m_path = req.model or "best1.pt"
+        live_model = ModelRegistry.get_or_load(m_path, settings.device)
 
-        res = LIVE_MODEL.predict(frame, conf=req.conf or 0.35, verbose=False)[0]
+        res = live_model.predict(frame, conf=req.conf or 0.35, imgsz=480, verbose=False)[0]
         dets = []
         if res.boxes is not None and len(res.boxes) > 0:
             for b in res.boxes:
                 c = int(b.cls[0])
                 cf = float(b.conf[0])
-                c_name = LIVE_MODEL.names.get(c, str(c))
+                c_name = live_model.names.get(c, str(c))
                 xy = b.xyxy[0].tolist()
                 dets.append({
                     "class_name": c_name,
@@ -368,6 +398,23 @@ def process_live_frame(req: LiveFrameReq):
         return {"detections": dets}
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/api/v1/jobs/cleanup")
+def cleanup_storage(max_age_hours: int = 24):
+    """Clean up old temporary uploads and outputs older than max_age_hours."""
+    now = time.time()
+    cutoff = now - (max_age_hours * 3600)
+    cleaned = 0
+    for target_dir in [settings.upload_dir, settings.output_dir, settings.result_dir]:
+        for f in target_dir.glob("*.*"):
+            try:
+                if f.stat().st_mtime < cutoff:
+                    f.unlink(missing_ok=True)
+                    cleaned += 1
+            except Exception:
+                pass
+    return {"cleaned_files": cleaned}
 
 
 # Mount frontend static UI

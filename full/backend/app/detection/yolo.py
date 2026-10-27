@@ -1,6 +1,10 @@
+import threading
 from pathlib import Path
+from typing import Dict, Optional, List
+
 import cv2
 import numpy as np
+import torch
 from ultralytics import YOLO
 
 from ..config import settings, ROOT
@@ -8,7 +12,6 @@ from ..interfaces import BaseDetector, Det
 
 
 def resolve_device(pref: str) -> str:
-    import torch
     if pref == "cpu":
         return "cpu"
     if torch.cuda.is_available():
@@ -18,10 +21,73 @@ def resolve_device(pref: str) -> str:
     return "cpu"
 
 
-class YoloDetector(BaseDetector):
-    """Detection + optional instance masks + persistent IDs (ByteTrack) via ultralytics."""
+class ModelRegistry:
+    """Thread-safe persistent model cache preventing repeated weight loading from disk."""
+    _lock = threading.Lock()
+    _models: Dict[str, YOLO] = {}
 
-    def __init__(self, model, device="auto", conf=0.35, iou=0.5, segment=True, tracker="bytetrack.yaml", classes=None):
+    @classmethod
+    def get_or_load(cls, model_path: str, device: str = "cpu") -> YOLO:
+        key = f"{model_path}:{device}"
+        with cls._lock:
+            if key in cls._models:
+                return cls._models[key]
+
+            # Resolve path if relative
+            p = Path(model_path)
+            if not p.is_absolute() and not p.exists():
+                search_dirs = [
+                    ROOT,
+                    ROOT / "models",
+                    ROOT.parent / "full",
+                    ROOT.parent / "ai-military-surveillance-system",
+                    ROOT.parent / "Yolo-Weights"
+                ]
+                for sd in search_dirs:
+                    cand = sd / model_path
+                    if cand.exists():
+                        p = cand
+                        break
+
+            # Optimize PyTorch CPU execution threads if running on CPU
+            if device == "cpu":
+                torch.set_num_threads(min(8, torch.get_num_threads() or 4))
+
+            loaded_model = YOLO(str(p))
+
+            # Warm-up pass to initialize PyTorch graphs and predictor
+            try:
+                dummy = np.zeros((320, 320, 3), dtype=np.uint8)
+                with torch.inference_mode():
+                    _ = loaded_model.predict(dummy, imgsz=320, verbose=False, device=device)
+            except Exception:
+                pass
+
+            cls._models[key] = loaded_model
+            return loaded_model
+
+    @classmethod
+    def clear(cls):
+        with cls._lock:
+            cls._models.clear()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
+
+class YoloDetector(BaseDetector):
+    """Detection + optional instance masks + persistent IDs (ByteTrack) with persistent caching."""
+
+    def __init__(
+        self,
+        model: str,
+        device: str = "auto",
+        conf: float = 0.35,
+        iou: float = 0.5,
+        segment: bool = True,
+        tracker: str = "bytetrack.yaml",
+        classes: Optional[list] = None,
+        imgsz: int = 640
+    ):
         self.model_raw = model
         self.conf = conf
         self.iou = iou
@@ -29,64 +95,64 @@ class YoloDetector(BaseDetector):
         self.tracker = tracker
         self.device = resolve_device(device)
         self.classes = classes
+        self.imgsz = imgsz
         self.model = None
         self.names = {}
         self.is_segmentation = False
+        self.half = (self.device.startswith("cuda"))
 
     def load(self):
-        p = Path(self.model_raw)
-        if not p.is_absolute() and not p.exists():
-            search_dirs = [
-                ROOT,
-                ROOT / "models",
-                ROOT.parent / "full",
-                ROOT.parent / "ai-military-surveillance-system",
-                ROOT.parent / "Yolo-Weights"
-            ]
-            for sd in search_dirs:
-                cand = sd / self.model_raw
-                if cand.exists():
-                    p = cand
-                    break
-
-        self.model = YOLO(str(p))
+        """Fetch model from persistent ModelRegistry."""
+        self.model = ModelRegistry.get_or_load(self.model_raw, self.device)
         self.names = self.model.names or {}
-        # Check if model has segmentation capability
         task = getattr(self.model, "task", None) or ""
-        self.is_segmentation = "segment" in str(task).lower() or "seg" in str(p).lower()
+        self.is_segmentation = "segment" in str(task).lower() or "seg" in str(self.model_raw).lower()
+        self.reset_tracker()
 
-    def predict(self, frame):
+    def reset_tracker(self):
+        """Reset internal ByteTrack tracking state cleanly between video jobs."""
+        if hasattr(self.model, "predictor") and self.model.predictor:
+            trackers = getattr(self.model.predictor, "trackers", None)
+            if trackers and isinstance(trackers, list):
+                for t in trackers:
+                    if hasattr(t, "reset"):
+                        try:
+                            t.reset()
+                        except Exception:
+                            pass
+
+    def predict(self, frame: np.ndarray) -> List[Det]:
         do_seg = self.segment and self.is_segmentation
-        # For custom military model (best1.pt), detect all classes unless specific list provided
         is_military_model = "best" in str(self.model_raw).lower()
         classes_filter = None if is_military_model else (self.classes if self.classes else None)
 
-        try:
-            r = self.model.track(
-                frame,
-                persist=True,
-                tracker=self.tracker,
-                conf=self.conf,
-                iou=self.iou,
-                classes=classes_filter,
-                device=self.device,
-                verbose=False
-            )[0]
-        except Exception:
-            # Fallback to standard predict if tracker throws
-            r = self.model.predict(
-                frame,
-                conf=self.conf,
-                iou=self.iou,
-                classes=classes_filter,
-                device=self.device,
-                verbose=False
-            )[0]
+        with torch.inference_mode():
+            try:
+                r = self.model.track(
+                    frame,
+                    persist=True,
+                    tracker=self.tracker,
+                    conf=self.conf,
+                    iou=self.iou,
+                    imgsz=self.imgsz,
+                    classes=classes_filter,
+                    device=self.device,
+                    verbose=False
+                )[0]
+            except Exception:
+                r = self.model.predict(
+                    frame,
+                    conf=self.conf,
+                    iou=self.iou,
+                    imgsz=self.imgsz,
+                    classes=classes_filter,
+                    device=self.device,
+                    verbose=False
+                )[0]
 
         if r.boxes is None or len(r.boxes) == 0:
             return []
 
-        # If ByteTrack hasn't assigned IDs yet or tracking was unassigned, provide stable frame-level IDs
         if r.boxes.id is None:
             ids = [i + 1 for i in range(len(r.boxes))]
         else:
