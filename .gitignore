@@ -33,3 +33,10 @@ $RECYCLE.BIN/
 node_modules/
 dist/
 .next/
+
+storage/uploads/*
+storage/outputs/*
+storage/results/*
+*.pt
+!yolov8n-seg.pt
+!best1.pt

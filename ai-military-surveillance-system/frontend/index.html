@@ -1,0 +1,1149 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vehicle & Military Surveillance Platform</title>
+  <style>
+    :root {
+      --bg: #070b14;
+      --pn: #0d1424;
+      --pn-alt: #111b30;
+      --ln: #1c2840;
+      --tx: #e6ecf8;
+      --mu: #8b99b5;
+      --ac: #2563eb;
+      --ac-hover: #1d4ed8;
+      --ok: #22c55e;
+      --warn: #f59e0b;
+      --danger: #ef4444;
+      --ar: 16/9;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--tx);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+      font-size: 14px;
+      line-height: 1.4;
+      overflow-x: hidden;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 20px;
+      border-bottom: 1px solid var(--ln);
+      background: rgba(13, 20, 36, 0.85);
+      backdrop-filter: blur(8px);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    h1 {
+      font-size: 19px;
+      margin: 0;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    h2 {
+      font-size: 13.5px;
+      margin: 0 0 10px 0;
+      font-weight: 600;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: #cbd5e1;
+    }
+    .mu { color: var(--mu); }
+    .ok { color: var(--ok); }
+    .danger { color: var(--danger); }
+    .warn { color: var(--warn); }
+    
+    .wrap {
+      display: grid;
+      grid-template-columns: 180px 1fr;
+      min-height: calc(100vh - 57px);
+    }
+    nav {
+      border-right: 1px solid var(--ln);
+      padding: 14px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      background: #090e1a;
+    }
+    nav button {
+      width: 100%;
+      text-align: left;
+      padding: 10px 12px;
+      border-radius: 6px;
+      color: var(--mu);
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      font: inherit;
+      font-size: 13.5px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      transition: all 0.15s ease;
+    }
+    nav button:hover {
+      background: rgba(255, 255, 255, 0.05);
+      color: #fff;
+    }
+    nav button.on {
+      background: var(--ac);
+      color: #fff;
+      font-weight: 600;
+      box-shadow: 0 2px 8px rgba(37, 99, 235, 0.35);
+    }
+    
+    main {
+      padding: 14px;
+    }
+    .view-panel {
+      display: none;
+    }
+    .view-panel.active {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+    .card {
+      background: var(--pn);
+      border: 1px solid var(--ln);
+      border-radius: 8px;
+      padding: 12px;
+      min-width: 0;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    .w2 { grid-column: span 2; }
+    .w4 { grid-column: span 4; }
+    
+    /* Stage & Video */
+    .stage {
+      position: relative;
+      aspect-ratio: var(--ar);
+      background: #000;
+      border-radius: 6px;
+      overflow: hidden;
+      border: 1px solid var(--ln);
+    }
+    .stage video, .stage canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+    .stage canvas {
+      pointer-events: none;
+    }
+    canvas.f {
+      width: 100%;
+      height: 220px;
+      display: block;
+      background: #05080f;
+      border-radius: 6px;
+    }
+    
+    /* View switcher pill bar */
+    .view-switcher {
+      display: inline-flex;
+      background: #070b14;
+      border: 1px solid var(--ln);
+      border-radius: 6px;
+      padding: 2px;
+      gap: 2px;
+    }
+    .view-switcher button {
+      padding: 3px 8px;
+      font-size: 11px;
+      background: transparent;
+      border: none;
+      color: var(--mu);
+      cursor: pointer;
+      border-radius: 4px;
+      width: auto;
+      margin: 0;
+    }
+    .view-switcher button.active {
+      background: var(--ac);
+      color: #fff;
+      font-weight: 600;
+    }
+    
+    /* Download button */
+    .btn-download {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 10px;
+      background: #10b981;
+      color: #fff;
+      border: none;
+      border-radius: 5px;
+      font-size: 11.5px;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+      margin-left: auto;
+      transition: background 0.15s;
+    }
+    .btn-download:hover {
+      background: #059669;
+    }
+    
+    .dual-stage {
+      display: none;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      aspect-ratio: var(--ar);
+      background: #000;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .dual-pane {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      border: 1px solid var(--ln);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .dual-pane video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+    .dual-badge {
+      position: absolute;
+      top: 6px;
+      left: 6px;
+      background: rgba(0,0,0,0.7);
+      padding: 2px 6px;
+      font-size: 10px;
+      border-radius: 4px;
+      color: #fff;
+      z-index: 2;
+    }
+    
+    /* Rows and lists */
+    .row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 0;
+      border-bottom: 1px solid var(--ln);
+      font-size: 12.5px;
+    }
+    .badge {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    
+    /* Table */
+    .table-wrap {
+      max-height: 220px;
+      overflow-y: auto;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    td, th {
+      text-align: left;
+      padding: 6px 4px;
+      border-bottom: 1px solid var(--ln);
+    }
+    th {
+      color: var(--mu);
+      font-weight: 600;
+      position: sticky;
+      top: 0;
+      background: var(--pn);
+    }
+    
+    /* Form controls */
+    select, button, input[type=file], input[type=number] {
+      width: 100%;
+      margin: 5px 0 10px 0;
+      padding: 8px 10px;
+      background: var(--pn-alt);
+      color: var(--tx);
+      border: 1px solid var(--ln);
+      border-radius: 6px;
+      font: inherit;
+      font-size: 13px;
+      transition: border-color 0.15s;
+    }
+    select:focus, input:focus {
+      border-color: #3b82f6;
+      outline: none;
+    }
+    button.p {
+      background: var(--ac);
+      border-color: var(--ac);
+      color: #fff;
+      font-weight: 600;
+      cursor: pointer;
+      padding: 9px;
+    }
+    button.p:hover {
+      background: var(--ac-hover);
+    }
+    button#stop {
+      background: #334155;
+      border-color: #475569;
+      cursor: pointer;
+    }
+    button#stop:hover {
+      background: #475569;
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    .radio-group {
+      margin: 8px 0;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .radio-label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      font-size: 12.5px;
+    }
+    progress {
+      width: 100%;
+      height: 8px;
+      border-radius: 4px;
+      accent-color: var(--ac);
+      margin-top: 6px;
+    }
+    
+    /* Samples Grid */
+    .sample-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 12px;
+    }
+    .sample-card {
+      background: var(--pn);
+      border: 1px solid var(--ln);
+      border-radius: 8px;
+      padding: 14px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .sample-card:hover {
+      border-color: var(--ac);
+      transform: translateY(-2px);
+    }
+    
+    /* Models Grid */
+    .classes-badge-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 10px;
+    }
+    .class-pill {
+      background: #111b30;
+      border: 1px solid var(--ln);
+      padding: 3px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      color: #93c5fd;
+    }
+    
+    @media (max-width: 1200px) {
+      .view-panel.active { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .w4 { grid-column: span 2; }
+    }
+    @media (max-width: 768px) {
+      .wrap { grid-template-columns: 1fr; }
+      nav { display: none; }
+      .view-panel.active { grid-template-columns: 1fr; }
+      .w2, .w4 { grid-column: auto; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>
+        <span style="color:#3b82f6">🛡️</span> AI Military Surveillance & Convoy Analysis
+      </h1>
+      <span class="mu" style="font-size:12px;">Detection, segmentation, optical flow motion and tactical convoy tracking</span>
+    </div>
+    <div style="font-size: 12px;" class="mu">
+      <span class="ok" id="sys">Connecting...</span> &nbsp;•&nbsp; <span id="clk"></span>
+    </div>
+  </header>
+
+  <div class="wrap">
+    <nav aria-label="Sections">
+      <button class="on" data-target="dashboard">📊 Dashboard</button>
+      <button data-target="livefeed">📹 Live Feed</button>
+      <button data-target="samples">📁 Sample Videos</button>
+      <button data-target="models">🧠 Models</button>
+      <button data-target="settings">⚙️ Settings</button>
+    </nav>
+
+    <main>
+      <!-- TAB 1: DASHBOARD -->
+      <div id="panel-dashboard" class="view-panel active">
+        <!-- 1. Input / Output Stage (2 Columns) -->
+        <section class="card w2">
+          <h2>
+            <span>Feed Display <small class="mu" id="fname"></small></span>
+            <div class="view-switcher">
+              <button id="btnViewOutput" class="active" title="View Processed Output Video with Annotations">Output Video</button>
+              <button id="btnViewOverlay" title="View Input Video with Canvas Overlays">Canvas Overlay</button>
+              <button id="btnViewDual" title="Compare Input vs Output Side by Side">Dual View</button>
+            </div>
+            <a id="btnDownload" class="btn-download" style="display:none;" download>
+              ⬇ Download Video
+            </a>
+          </h2>
+
+          <!-- Subheader checkboxes for Canvas Overlays -->
+          <div style="margin-bottom: 8px; display: flex; gap: 14px; font-size: 12px;" class="mu">
+            <label><input type="checkbox" id="tb" checked> Boxes</label>
+            <label><input type="checkbox" id="tm" checked> Masks</label>
+            <label><input type="checkbox" id="tt" checked> Trails</label>
+            <label><input type="checkbox" id="th" checked> HUD Overlay</label>
+          </div>
+
+          <!-- Video Players Container -->
+          <div id="standardStage" class="stage">
+            <!-- Output Video Player (H.264) -->
+            <video id="outVid" controls playsinline muted style="display:block;"></video>
+            <!-- Input Video Player + Canvas Overlay -->
+            <video id="vid" controls playsinline muted style="display:none;"></video>
+            <canvas id="ov"></canvas>
+          </div>
+
+          <!-- Dual Side-by-Side Comparison Container -->
+          <div id="dualStage" class="dual-stage">
+            <div class="dual-pane">
+              <span class="dual-badge">Raw Input</span>
+              <video id="dualVidIn" controls muted></video>
+            </div>
+            <div class="dual-pane">
+              <span class="dual-badge">Annotated Output</span>
+              <video id="dualVidOut" controls muted></video>
+            </div>
+          </div>
+        </section>
+
+        <!-- 2. Segmentation / Motion Canvas -->
+        <section class="card">
+          <h2>Segmentation & Motion Mask</h2>
+          <div class="stage">
+            <canvas id="seg"></canvas>
+          </div>
+        </section>
+
+        <!-- 3. Detected Objects & Tactical Status -->
+        <section style="display:flex; flex-direction:column; gap:12px;">
+          <div class="card">
+            <h2>Detected objects <span class="badge" style="background:#1e3a8a; color:#93c5fd;" id="n">0</span></h2>
+            <div id="objs" style="max-height: 140px; overflow-y:auto;">
+              <span class="mu">Upload or choose a video and run analysis.</span>
+            </div>
+          </div>
+
+          <div class="card">
+            <h2>Tactical Movement & Convoy</h2>
+            <div id="cv">
+              <span class="mu">No analysis yet.</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- 4. Analysis Results Table -->
+        <section class="card">
+          <h2>Analysis results</h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Class</th>
+                  <th>Conf</th>
+                  <th>Motion</th>
+                  <th>Area px</th>
+                  <th>x, y</th>
+                </tr>
+              </thead>
+              <tbody id="tbl"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- 5. Object Tracking Trajectory -->
+        <section class="card">
+          <h2>Object tracking (trajectory)</h2>
+          <canvas id="tr" class="f"></canvas>
+        </section>
+
+        <!-- 6. Mean Confidence per Class -->
+        <section class="card">
+          <h2>Mean confidence per class</h2>
+          <canvas id="ch" class="f" width="420" height="220"></canvas>
+        </section>
+
+        <!-- 7. Controls & Execution -->
+        <section class="card">
+          <h2>Controls</h2>
+          <label class="mu" for="model" style="font-size:12px;">Model Weights</label>
+          <select id="model"></select>
+
+          <label class="mu" for="quickSample" style="font-size:12px;">Quick Sample Video</label>
+          <select id="quickSample">
+            <option value="">-- Choose Built-in Video --</option>
+          </select>
+
+          <label class="mu" for="file" style="font-size:12px;">Or Upload Video</label>
+          <input type="file" id="file" accept="video/*">
+
+          <div class="mu" style="font-size:12px; margin-top: 4px;">Analysis Mode</div>
+          <div class="radio-group">
+            <label class="radio-label">
+              <input type="radio" name="mode" value="military+optical_flow" checked>
+              Military Surveillance + Optical Flow
+            </label>
+            <label class="radio-label">
+              <input type="radio" name="mode" value="detection+segmentation">
+              Detection + Segmentation
+            </label>
+            <label class="radio-label">
+              <input type="radio" name="mode" value="detection">
+              Detection Only
+            </label>
+          </div>
+
+          <button class="p" id="run" disabled>Run Analysis</button>
+          <button id="stop" style="display:none;">Stop Processing</button>
+          
+          <progress id="bar" max="1" value="0"></progress>
+          <div class="mu" id="msg" role="status" style="font-size:12px; margin-top:6px; min-height:18px;"></div>
+        </section>
+      </div>
+
+      <!-- TAB 2: LIVE WEBCAM FEED -->
+      <div id="panel-livefeed" class="view-panel">
+        <section class="card w2">
+          <h2>Live Webcam Surveillance</h2>
+          <div class="stage">
+            <video id="webcamVid" autoplay playsinline muted style="display:none;"></video>
+            <canvas id="webcamCanvas" style="position:relative; width:100%; height:100%;"></canvas>
+          </div>
+          <div style="margin-top: 10px; display:flex; gap:10px;">
+            <button class="p" id="btnStartWebcam" style="width:auto;">Start Camera</button>
+            <button id="btnStopWebcam" style="width:auto; display:none;">Stop Camera</button>
+          </div>
+        </section>
+        <section class="card w2">
+          <h2>Real-Time Telemetry</h2>
+          <div id="liveTelemetry" class="mu" style="font-size:13px; line-height:1.6;">
+            Start camera to begin real-time military asset detection and surveillance.
+          </div>
+        </section>
+      </div>
+
+      <!-- TAB 3: SAMPLE VIDEOS -->
+      <div id="panel-samples" class="view-panel">
+        <section class="card w4">
+          <h2>Available Project Sample Videos</h2>
+          <p class="mu">Click any video below to instantly load it into the Dashboard for inference.</p>
+          <div id="samplesList" class="sample-grid"></div>
+        </section>
+      </div>
+
+      <!-- TAB 4: MODELS -->
+      <div id="panel-models" class="view-panel">
+        <section class="card w4">
+          <h2>Neural Network Models & Detected Classes</h2>
+          <div id="modelsList" style="display:grid; gap:14px;"></div>
+        </section>
+      </div>
+
+      <!-- TAB 5: SETTINGS -->
+      <div id="panel-settings" class="view-panel">
+        <section class="card w2">
+          <h2>Thresholds & Tuning</h2>
+          <label class="mu">Confidence Threshold: <b id="confVal">0.35</b></label>
+          <input type="range" id="confSlider" min="0.10" max="0.95" step="0.05" value="0.35">
+
+          <label class="mu" style="margin-top:10px; display:block;">IoU Threshold: <b id="iouVal">0.50</b></label>
+          <input type="range" id="iouSlider" min="0.10" max="0.90" step="0.05" value="0.50">
+
+          <label class="mu" style="margin-top:10px; display:block;">Optical Flow Motion Sensitivity: <b id="motVal">2.0</b></label>
+          <input type="range" id="motSlider" min="0.5" max="10.0" step="0.5" value="2.0">
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const $ = id => document.getElementById(id);
+    const COL = {
+      // Military model classes
+      camouflage_soldier: "#10b981",
+      weapon: "#ef4444",
+      military_tank: "#f59e0b",
+      military_truck: "#3b82f6",
+      military_vehicle: "#8b5cf6",
+      soldier: "#06b6d4",
+      civilian_vehicle: "#64748b",
+      military_artillery: "#ec4899",
+      military_aircraft: "#84cc16",
+      military_warship: "#14b8a6",
+      // COCO classes
+      car: "#3b82f6",
+      truck: "#ef4444",
+      bus: "#22c55e",
+      motorcycle: "#f59e0b"
+    };
+    const col = c => COL[c] || "#a78bfa";
+
+    let up = null, R = null, byF = new Map(), trk = {}, ser = {}, last = -1, jobId = null;
+    let currentViewMode = "output"; // "output", "overlay", "dual"
+    let liveStream = null, liveTimer = null;
+
+    const msg = t => $("msg").textContent = t;
+
+    async function api(p, o) {
+      const r = await fetch("/api/v1" + p, o);
+      if (!r.ok) {
+        let m = r.statusText;
+        try { m = (await r.json()).detail || m; } catch {}
+        throw new Error(typeof m === "string" ? m : JSON.stringify(m));
+      }
+      return r.json();
+    }
+
+    // Initialize System Status
+    api("/system").then(s => {
+      $("sys").textContent = "System online • " + s.device;
+      $("model").innerHTML = s.models.map(m => `<option value="${m}">${m}</option>`).join("");
+    }).catch(() => {
+      $("sys").textContent = "Backend offline";
+      $("sys").className = "mu";
+    });
+
+    setInterval(() => $("clk").textContent = new Date().toLocaleString(), 1000);
+
+    // Tab Navigation
+    document.querySelectorAll("nav button").forEach(btn => {
+      btn.onclick = () => {
+        document.querySelectorAll("nav button").forEach(b => b.classList.remove("on"));
+        btn.classList.add("on");
+        const target = btn.dataset.target;
+        document.querySelectorAll(".view-panel").forEach(p => p.classList.remove("active"));
+        $(`panel-${target}`).classList.add("active");
+        if (target === "samples") loadSamples();
+        if (target === "models") loadModelsInfo();
+      };
+    });
+
+    // Load Sample Videos
+    async function loadSamples() {
+      try {
+        const res = await api("/samples");
+        const list = $("samplesList");
+        const select = $("quickSample");
+        select.innerHTML = '<option value="">-- Choose Built-in Video --</option>' +
+          res.samples.map(s => `<option value="${s.name}">${s.name} (${s.size_mb} MB)</option>`).join("");
+        
+        list.innerHTML = res.samples.map(s => `
+          <div class="sample-card" onclick="chooseSample('${s.name}')">
+            <h3 style="margin:0 0 6px 0; font-size:14px; color:#93c5fd;">📹 ${s.name}</h3>
+            <div class="mu" style="font-size:12px;">Size: ${s.size_mb} MB</div>
+            <button class="p" style="margin-top:10px; padding:6px 12px; font-size:12px;" onclick="event.stopPropagation(); chooseSample('${s.name}')">
+              Load & Analyze
+            </button>
+          </div>
+        `).join("");
+      } catch(e) {
+        console.error(e);
+      }
+    }
+    loadSamples();
+
+    window.chooseSample = async function(name) {
+      document.querySelector("nav button[data-target='dashboard']").click();
+      msg(`Loading sample video: ${name}...`);
+      try {
+        up = await api("/sample/select", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({filename: name})
+        });
+        setupLoadedVideo(up, name);
+      } catch(x) {
+        msg("Failed to load sample: " + x.message);
+      }
+    };
+
+    $("quickSample").onchange = e => {
+      if (e.target.value) chooseSample(e.target.value);
+    };
+
+    function setupLoadedVideo(upData, name) {
+      up = upData;
+      R = null;
+      last = -1;
+      $("btnDownload").style.display = "none";
+      const vidUrl = "/api/v1/video/" + up.upload_id;
+      $("vid").src = vidUrl;
+      $("dualVidIn").src = vidUrl;
+      $("fname").textContent = `(${name})`;
+      document.documentElement.style.setProperty("--ar", `${up.width}/${up.height}`);
+      msg(`${up.width}x${up.height} • ${up.fps.toFixed(1)} fps • ${up.frames} frames`);
+      $("run").disabled = false;
+      // Default to overlay until analysis produces output video
+      setViewMode("overlay");
+    }
+
+    // File Upload Handler
+    $("file").onchange = async e => {
+      const f = e.target.files[0];
+      if (!f) return;
+      msg("Uploading video...");
+      try {
+        const fd = new FormData();
+        fd.append("file", f);
+        const upRes = await api("/upload", {method: "POST", body: fd});
+        setupLoadedVideo(upRes, f.name);
+      } catch(x) {
+        msg("Upload failed: " + x.message);
+      }
+    };
+
+    // View Switching Logic
+    function setViewMode(mode) {
+      currentViewMode = mode;
+      $("btnViewOutput").classList.toggle("active", mode === "output");
+      $("btnViewOverlay").classList.toggle("active", mode === "overlay");
+      $("btnViewDual").classList.toggle("active", mode === "dual");
+
+      if (mode === "dual") {
+        $("standardStage").style.display = "none";
+        $("dualStage").style.display = "grid";
+      } else {
+        $("standardStage").style.display = "block";
+        $("dualStage").style.display = "none";
+        $("outVid").style.display = mode === "output" ? "block" : "none";
+        $("vid").style.display = mode === "overlay" ? "block" : "none";
+      }
+    }
+    $("btnViewOutput").onclick = () => setViewMode("output");
+    $("btnViewOverlay").onclick = () => setViewMode("overlay");
+    $("btnViewDual").onclick = () => setViewMode("dual");
+
+    // Analysis Execution
+    $("run").onclick = async () => {
+      if (!up) return;
+      try {
+        const reqBody = {
+          upload_id: up.upload_id,
+          model: $("model").value,
+          mode: document.querySelector("[name=mode]:checked").value,
+          conf: parseFloat($("confSlider").value),
+          iou: parseFloat($("iouSlider").value),
+          motion_threshold: parseFloat($("motSlider").value),
+          stride: 1
+        };
+
+        const j = await api("/analysis/start", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify(reqBody)
+        });
+
+        jobId = j.id;
+        $("run").disabled = true;
+        $("run").style.display = "none";
+        $("stop").style.display = "block";
+        msg("Analysis queued...");
+
+        const timer = setInterval(async () => {
+          try {
+            const s = await api("/analysis/" + j.id);
+            $("bar").value = s.progress;
+            msg(`${s.status.toUpperCase()} • ${(s.progress * 100).toFixed(0)}% • ${s.fps.toFixed(1)} fps • Frame ${s.frame || 0}/${s.total_frames || 0}${s.error ? " • Error: " + s.error : ""}`);
+            
+            if (["completed", "failed", "cancelled"].includes(s.status)) {
+              clearInterval(timer);
+              $("run").disabled = false;
+              $("run").style.display = "block";
+              $("stop").style.display = "none";
+
+              if (s.status !== "failed") {
+                await loadAnalysisResult(j.id);
+              }
+            }
+          } catch(err) {
+            clearInterval(timer);
+            msg(err.message);
+            $("run").disabled = false;
+            $("run").style.display = "block";
+            $("stop").style.display = "none";
+          }
+        }, 800);
+      } catch(x) {
+        msg("Failed to start analysis: " + x.message);
+      }
+    };
+
+    $("stop").onclick = () => {
+      if (jobId) {
+        api(`/analysis/${jobId}/stop`, {method: "POST"}).catch(x => msg(x.message));
+      }
+    };
+
+    // Load Completed Results & Output Video
+    async function loadAnalysisResult(id) {
+      R = await api(`/analysis/${id}/result`);
+      byF = new Map(R.frames.map(f => [f.frame_id, f]));
+      trk = {};
+      ser = {};
+
+      R.frames.forEach((f, n) => {
+        const by = {};
+        f.detections.forEach(d => {
+          (trk[d.track_id] ??= []).push([f.frame_id, d.centroid[0], d.centroid[1]]);
+          (by[d.class_name] ??= []).push(d.conf);
+        });
+        for (const k in by) {
+          (ser[k] ??= []).push([n, by[k].reduce((a, b) => a + b) / by[k].length]);
+        }
+      });
+
+      last = -1;
+      const outputVideoUrl = `/api/v1/analysis/${id}/video?t=` + Date.now();
+      $("outVid").src = outputVideoUrl;
+      $("dualVidOut").src = outputVideoUrl;
+
+      // Enable Download Button
+      const downloadBtn = $("btnDownload");
+      downloadBtn.href = `/api/v1/analysis/${id}/download`;
+      downloadBtn.style.display = "inline-flex";
+
+      // Automatically switch to Output Video player
+      setViewMode("output");
+
+      msg(`Analysis complete! ${R.frames.length} frames processed • ${R.groups.length} convoy groups identified.`);
+    }
+
+    // Synchronize Canvas Overlays with Video Playback
+    function fit(c) {
+      const w = Math.round(c.getBoundingClientRect().width);
+      if (c.width !== w && R && R.meta) {
+        c.width = w;
+        c.height = Math.round(w * R.meta.height / R.meta.width);
+      }
+      return R && R.meta ? c.width / R.meta.width : 1;
+    }
+
+    const hex = (c, a) => c + Math.round(a * 255).toString(16).padStart(2, "0");
+
+    function poly(x, d, s, fill) {
+      if (!d.mask) return;
+      x.beginPath();
+      d.mask.forEach(([a, b], k) => k ? x.lineTo(a * s, b * s) : x.moveTo(a * s, b * s));
+      x.closePath();
+      x.fillStyle = fill;
+      x.fill();
+    }
+
+    function trail(x, id, i, s, k, win) {
+      if (!trk[id]) return;
+      const p = trk[id].filter(q => q[0] <= i && q[0] > i - win);
+      x.strokeStyle = k;
+      x.beginPath();
+      p.forEach((q, n) => n ? x.lineTo(q[1] * s, q[2] * s) : x.moveTo(q[1] * s, q[2] * s));
+      x.stroke();
+    }
+
+    function renderConfidenceChart(i) {
+      const cv = $("ch"), x = cv.getContext("2d"), W = cv.width, H = cv.height;
+      const N = (R && R.frames.length) || 1;
+      x.clearRect(0, 0, W, H);
+      x.lineWidth = 1.5;
+      x.font = "11px system-ui";
+
+      [0, 0.5, 1].forEach(v => {
+        const y = H - 20 - v * (H - 35);
+        x.strokeStyle = "#1c2840";
+        x.beginPath();
+        x.moveTo(30, y);
+        x.lineTo(W, y);
+        x.stroke();
+        x.fillStyle = "#8b99b5";
+        x.fillText(v, 4, y + 4);
+      });
+
+      for (const k in ser) {
+        x.strokeStyle = col(k);
+        x.beginPath();
+        ser[k].forEach(([n, v], j) => {
+          const px = 30 + (n / N) * (W - 35);
+          const py = H - 20 - v * (H - 35);
+          j ? x.lineTo(px, py) : x.moveTo(px, py);
+        });
+        x.stroke();
+      }
+
+      const px = 30 + Math.floor(i / (R.meta.stride || 1)) / N * (W - 35);
+      x.strokeStyle = "#fff";
+      x.beginPath();
+      x.moveTo(px, 0);
+      x.lineTo(px, H - 20);
+      x.stroke();
+    }
+
+    // Animation Tick Loop
+    function tick() {
+      requestAnimationFrame(tick);
+      if (!R) return;
+
+      const activeVid = currentViewMode === "output" ? $("outVid") : $("vid");
+      const i = Math.round(activeVid.currentTime * R.meta.fps);
+      if (i === last) return;
+      last = i;
+
+      const r = byF.get(Math.floor(i / (R.meta.stride || 1)) * (R.meta.stride || 1));
+      if (!r) return;
+
+      // 1. Overlay Canvas
+      let cv = $("ov");
+      let s = fit(cv);
+      let x = cv.getContext("2d");
+      x.clearRect(0, 0, cv.width, cv.height);
+      x.lineWidth = 2;
+      x.font = "12px system-ui";
+
+      r.detections.forEach(d => {
+        const isMoving = d.motion_status === "Moving";
+        const k = isMoving ? "#ef4444" : (col(d.class_name) || "#22c55e");
+
+        if ($("tm").checked && d.mask) poly(x, d, s, hex(k, 0.35));
+        if ($("tb").checked) {
+          const [a, b, c, e] = d.bbox;
+          const t = `${d.class_name} ${d.conf.toFixed(2)} | ${d.motion_status} #${d.track_id}`;
+          x.strokeStyle = k;
+          x.strokeRect(a * s, b * s, (c - a) * s, (e - b) * s);
+          x.fillStyle = k;
+          const tw = x.measureText(t).width + 8;
+          x.fillRect(a * s, b * s - 16, tw, 16);
+          x.fillStyle = "#fff";
+          x.fillText(t, a * s + 4, b * s - 4);
+        }
+        if ($("tt").checked) trail(x, d.track_id, i, s, k, (R.meta.stride || 1) * 60);
+      });
+
+      // 2. Segmentation Stage Canvas
+      cv = $("seg");
+      s = fit(cv);
+      x = cv.getContext("2d");
+      x.fillStyle = "#05080f";
+      x.fillRect(0, 0, cv.width, cv.height);
+      r.detections.forEach(d => {
+        if (d.mask) poly(x, d, s, hex(col(d.class_name), 0.85));
+      });
+
+      // 3. Trajectory Stage Canvas
+      cv = $("tr");
+      s = fit(cv);
+      x = cv.getContext("2d");
+      x.fillStyle = "#05080f";
+      x.fillRect(0, 0, cv.width, cv.height);
+      x.lineWidth = 1.5;
+      Object.keys(trk).forEach(id => trail(x, id, i, s, "#475569", Infinity));
+      r.detections.forEach(d => {
+        x.fillStyle = col(d.class_name);
+        x.beginPath();
+        x.arc(d.centroid[0] * s, d.centroid[1] * s, 4, 0, 7);
+        x.fill();
+      });
+
+      // 4. Update Detected Objects Badges & Lists
+      const by = {};
+      let movingCnt = 0, staticCnt = 0;
+      r.detections.forEach(d => {
+        (by[d.class_name] ??= []).push(d.conf);
+        if (d.motion_status === "Moving") movingCnt++; else staticCnt++;
+      });
+      $("n").textContent = r.detections.length;
+      $("objs").innerHTML = Object.entries(by).map(([k, v]) => `
+        <div class="row">
+          <b style="color:${col(k)}">🏷️ ${k}</b>
+          <span>Count: <b>${v.length}</b></span>
+          <span class="mu">Avg Conf: ${(v.reduce((a, b) => a + b) / v.length).toFixed(2)}</span>
+        </div>
+      `).join("") || '<span class="mu">No objects detected in current frame</span>';
+
+      // 5. Convoy & Motion Status
+      const g = r.groups.find(g => g.confirmed);
+      const S = g && R.groups.find(q => q.group_id === g.group_id);
+      let cvHtml = `
+        <div class="row">
+          <span>Motion Status</span>
+          <span><b class="danger">${movingCnt} Moving</b> • <b class="ok">${staticCnt} Static</b></span>
+        </div>
+      `;
+      if (g) {
+        cvHtml += `
+          <div style="margin-top:8px;">
+            <b class="ok">Tactical Convoy Group Detected</b>
+            <div style="font-size:12px; margin-top:2px;" class="mu">
+              Members: ${g.members.length} • Spacing: ${g.spacing}px • Heading: ${g.direction}
+            </div>
+            <div style="font-size:11px;" class="mu">Confidence: ${S ? S.group_confidence : "N/A"}</div>
+          </div>
+        `;
+      } else {
+        cvHtml += `<div class="mu" style="margin-top:6px; font-size:12px;">No persistent convoy formation in this frame</div>`;
+      }
+      $("cv").innerHTML = cvHtml;
+
+      // 6. Analysis Table
+      $("tbl").innerHTML = r.detections.map(d => `
+        <tr>
+          <td>#${d.track_id}</td>
+          <td style="color:${col(d.class_name)}; font-weight:600;">${d.class_name}</td>
+          <td>${d.conf.toFixed(2)}</td>
+          <td><span class="badge" style="background:${d.motion_status === 'Moving' ? '#ef4444' : '#22c55e'}; color:#fff;">${d.motion_status}</span></td>
+          <td>${Math.round(d.mask_area || d.area)}</td>
+          <td>${d.centroid.map(Math.round).join(", ")}</td>
+        </tr>
+      `).join("");
+
+      // 7. Graph
+      renderConfidenceChart(i);
+    }
+    tick();
+
+    // Slider Listeners
+    $("confSlider").oninput = e => $("confVal").textContent = parseFloat(e.target.value).toFixed(2);
+    $("iouSlider").oninput = e => $("iouVal").textContent = parseFloat(e.target.value).toFixed(2);
+    $("motSlider").oninput = e => $("motVal").textContent = parseFloat(e.target.value).toFixed(1);
+
+    // Load Models Info Tab
+    async function loadModelsInfo() {
+      try {
+        const res = await api("/models/info");
+        $("modelsList").innerHTML = res.models.map(m => `
+          <div class="card" style="border-left: 4px solid #3b82f6;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <h3 style="margin:0; font-size:15px; color:#93c5fd;">${m.name}</h3>
+              <span class="badge" style="background:#1e3a8a; color:#bfdbfe;">${m.size_mb} MB</span>
+            </div>
+            <div class="mu" style="font-size:12px; margin-top:4px;">
+              Type: ${m.is_military ? '🎖️ Custom Military Surveillance Model' : 'Standard YOLOv8 Model'} • 
+              Segmentation: ${m.is_segmentation ? '✅ Yes' : '❌ Detection only'}
+            </div>
+            <div class="mu" style="font-size:12px; margin-top:8px;">Detectable Classes (${m.classes_count}):</div>
+            <div class="classes-badge-grid">
+              ${Object.values(m.classes).map(c => `<span class="class-pill">${c}</span>`).join("")}
+            </div>
+          </div>
+        `).join("");
+      } catch(e) {
+        console.error(e);
+      }
+    }
+
+    // Live Feed Webcam Logic
+    $("btnStartWebcam").onclick = async () => {
+      try {
+        liveStream = await navigator.mediaDevices.getUserMedia({video: {width: 640, height: 480}});
+        const wVid = $("webcamVid");
+        wVid.srcObject = liveStream;
+        wVid.style.display = "block";
+        $("btnStartWebcam").style.display = "none";
+        $("btnStopWebcam").style.display = "inline-block";
+
+        const canvas = $("webcamCanvas");
+        const ctx = canvas.getContext("2d");
+        canvas.width = 640;
+        canvas.height = 480;
+
+        liveTimer = setInterval(async () => {
+          if (!liveStream) return;
+          ctx.drawImage(wVid, 0, 0, canvas.width, canvas.height);
+          const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
+
+          try {
+            const res = await api("/live/process_frame", {
+              method: "POST",
+              headers: {"Content-Type": "application/json"},
+              body: JSON.stringify({image_base64: dataUrl, model: $("model").value, conf: 0.35})
+            });
+
+            // Draw detections
+            if (res.detections && res.detections.length > 0) {
+              ctx.lineWidth = 2;
+              ctx.font = "12px system-ui";
+              res.detections.forEach(d => {
+                const [x1, y1, x2, y2] = d.bbox;
+                const k = col(d.class_name);
+                ctx.strokeStyle = k;
+                ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+                ctx.fillStyle = k;
+                ctx.fillRect(x1, y1 - 16, ctx.measureText(d.class_name).width + 8, 16);
+                ctx.fillStyle = "#fff";
+                ctx.fillText(`${d.class_name} ${d.conf}`, x1 + 4, y1 - 4);
+              });
+              $("liveTelemetry").innerHTML = `
+                <b class="ok">Live Detection Active</b><br>
+                Objects in View: <b>${res.detections.length}</b><br>
+                ${res.detections.map(d => `<span class="class-pill">${d.class_name} (${d.conf})</span>`).join(" ")}
+              `;
+            } else {
+              $("liveTelemetry").innerHTML = `<span class="mu">Camera active • No objects currently in view</span>`;
+            }
+          } catch(err) {
+            // Drop frame on error
+          }
+        }, 300);
+      } catch(err) {
+        alert("Webcam access failed: " + err.message);
+      }
+    };
+
+    $("btnStopWebcam").onclick = () => {
+      if (liveStream) {
+        liveStream.getTracks().forEach(t => t.stop());
+        liveStream = null;
+      }
+      if (liveTimer) clearInterval(liveTimer);
+      $("btnStartWebcam").style.display = "inline-block";
+      $("btnStopWebcam").style.display = "none";
+      $("webcamVid").style.display = "none";
+      $("liveTelemetry").textContent = "Camera stopped.";
+    };
+  </script>
+</body>
+</html>

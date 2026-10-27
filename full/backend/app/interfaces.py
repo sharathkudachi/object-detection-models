@@ -14,6 +14,8 @@ class Det:
     area: float
     mask: Optional[list] = None  # polygon [[x, y], ...]
     mask_area: float = 0.0
+    motion_status: str = "Static"
+    motion_magnitude: float = 0.0
 
 
 class BaseDetector(ABC):

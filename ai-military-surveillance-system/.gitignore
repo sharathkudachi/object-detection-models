@@ -5,14 +5,18 @@ __pycache__/
 # Virtual Environment
 .venv/
 venv/
+env/
 
-# YOLO runs
+# YOLO runs & storage
 runs/
+storage/
 
-# Large files
-*.pt
+# Large test videos and weights (weights should be downloaded or tracked with LFS)
 *.avi
 *.mp4
+*.pt
+!test_video.mp4
 
-# VS Code
+# VS Code & IDE
 .vscode/
+.idea/

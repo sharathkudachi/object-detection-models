@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+storage/uploads/*
+storage/outputs/*
+storage/results/*
+*.pt
+!yolov8n-seg.pt
